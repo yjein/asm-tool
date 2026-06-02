@@ -1,0 +1,20 @@
+# 실행 결과물
+scan_results/
+
+# Nuclei 바이너리
+nuclei_bin/nuclei.exe
+
+# 수업 자료
+References/
+
+# Vulhub 외부 레포
+vulhub/
+
+# IDE / 로컬 설정
+.claude/
+*.local.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

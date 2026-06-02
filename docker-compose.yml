@@ -1,0 +1,49 @@
+networks:
+  log4shell_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  sambacry_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+  ssh_enum_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+
+services:
+  log4shell:
+    image: vulhub/solr:8.11.0
+    container_name: vuln_log4shell
+    ports:
+      - "8080:8983"
+    networks:
+      - log4shell_net
+    restart: unless-stopped
+
+  sambacry:
+    image: vulhub/samba:4.6.3
+    container_name: vuln_sambacry
+    tty: true
+    volumes:
+      - ./vulhub/samba/CVE-2017-7494/smb.conf:/usr/local/samba/etc/smb.conf
+    ports:
+      - "4445:445"
+    networks:
+      - sambacry_net
+    restart: unless-stopped
+
+  ssh_enum:
+    build: ./vulhub/openssh/CVE-2018-15473
+    container_name: vuln_ssh_enum
+    environment:
+      - ROOT_PASSWORD=vulhub
+    ports:
+      - "2222:22"
+    networks:
+      - ssh_enum_net
+    restart: unless-stopped
