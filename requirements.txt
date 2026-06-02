@@ -1,0 +1,5 @@
+rich
+impacket
+paramiko
+PyQt5
+python-nmap
