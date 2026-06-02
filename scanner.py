@@ -10,9 +10,11 @@ if sys.platform == "win32":
 from rich.table import Table
 from rich import box
 
-from scanners.utils import console, info, ok, warn
+from scanners.utils import console, info, warn
 from scanners.config import TARGETS, REMEDIATION, SEV_COLOR
 from scanners.detect import SCANNERS
+from scanners.portscan import run_port_scan
+from scanners.nmap_scan import run_nmap_scan
 
 BASE_DIR    = Path(__file__).parent
 RESULTS_DIR = BASE_DIR / "scan_results"
@@ -84,7 +86,7 @@ def print_summary(results):
     console.print()
 
 
-def save_report(results):
+def save_report(results, port_scan=None, nmap_scan=None):
     RESULTS_DIR.mkdir(exist_ok=True)
     data = {
         "scan_time": datetime.now().isoformat(),
@@ -104,6 +106,10 @@ def save_report(results):
             for r in results
         ],
     }
+    if port_scan:
+        data["port_scan"] = port_scan
+    if nmap_scan:
+        data["nmap_scan"] = nmap_scan
     path = RESULTS_DIR / "report.json"
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
@@ -131,6 +137,14 @@ def run_scan(target_info):
 
 def main():
     print_banner()
+
+    val  = input("  대상 IP / 도메인 (엔터 = localhost): ").strip()
+    host = val or "localhost"
+    console.print()
+
+    port_result = run_port_scan(host)
+    nmap_result = run_nmap_scan(host)
+
     while True:
         print_menu()
         choice = input("  선택 > ").strip()
@@ -153,7 +167,7 @@ def main():
             results.append(run_scan(t))
 
         print_summary(results)
-        save_report(results)
+        save_report(results, port_result, nmap_result)
 
         import report_html
         html_path = report_html.generate()
