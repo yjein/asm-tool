@@ -12,7 +12,7 @@ def scan_log4shell(target):
     host = target.replace("http://", "").replace("https://", "").split(":")[0]
     port = int(target.split(":")[-1]) if target.count(":") >= 2 else 8080
 
-    info(f"CVE-2021-44228 스캔 시작  —  대상: {target}")
+    info(f"CVE-2021-44228 스캔 시작대상: {target}")
 
     step("포트 연결 확인 중...")
     time.sleep(0.3)
@@ -65,7 +65,7 @@ def scan_log4shell(target):
 
         console.print()
         poc_ok, poc_msg = poc_log4shell(target)
-        return True, f"Solr {version} — Log4j 2.14.1 내장 (JNDI Lookup 취약)", poc_ok, poc_msg, os_info
+        return True, f"Solr {version}  Log4j 2.14.1 내장  JNDI Lookup 취약", poc_ok, poc_msg, os_info
 
     ok("취약 버전 아님")
     return False, "", False, "", os_info
@@ -75,7 +75,7 @@ def scan_sambacry(target):
     host = target.split(":")[0]
     port = int(target.split(":")[1]) if ":" in target else 445
 
-    info(f"CVE-2017-7494 스캔 시작  —  대상: {target}")
+    info(f"CVE-2017-7494 스캔 시작대상: {target}")
 
     step("SMB 포트 연결 확인 중...")
     time.sleep(0.3)
@@ -151,14 +151,14 @@ def scan_sambacry(target):
 
     console.print()
     poc_ok, poc_msg = poc_sambacry(host, port)
-    return True, f"Samba {samba_ver} — 게스트 공유 + NT 파이프 활성화 (원격 코드 실행)", poc_ok, poc_msg, os_info
+    return True, f"Samba {samba_ver}  게스트 공유  NT 파이프 활성화  원격 코드 실행 가능", poc_ok, poc_msg, os_info
 
 
 def scan_ssh_enum(target):
     host = target.split(":")[0]
     port = int(target.split(":")[1]) if ":" in target else 22
 
-    info(f"CVE-2018-15473 스캔 시작  —  대상: {target}")
+    info(f"CVE-2018-15473 스캔 시작대상: {target}")
 
     step("SSH 포트 연결 중...")
     time.sleep(0.3)
@@ -198,7 +198,7 @@ def scan_ssh_enum(target):
 
         console.print()
         poc_ok, poc_msg = poc_ssh_enum(host, port)
-        return True, f"{banner} — 사용자 열거 공격 가능 (공개키 인증 응답 분석)", poc_ok, poc_msg, os_info
+        return True, f"{banner}  공개키 인증 응답 차이로 사용자 열거 가능", poc_ok, poc_msg, os_info
 
     ok(f"취약 버전 아님 (OpenSSH {ssh_ver})")
     return False, "", False, "", os_info
