@@ -59,10 +59,11 @@ tr:last-child td { border-bottom: none; }
 .kv { display: grid; grid-template-columns: 100px 1fr; gap: 4px 8px; font-size: 13px; margin-bottom: 14px; }
 .kv .k { color: #777; }
 .detect { background: #f0f9ff; border-left: 3px solid #3b82f6; padding: 8px 12px; font-size: 12px; color: #1e40af; font-family: monospace; margin-bottom: 12px; white-space: pre-wrap; }
+.poc-ok   { background: #f0fdf4; border-left: 3px solid #16a34a; padding: 8px 12px; font-size: 12px; color: #166534; font-family: monospace; margin-bottom: 12px; }
+.poc-fail { background: #f9fafb; border-left: 3px solid #9ca3af; padding: 8px 12px; font-size: 12px; color: #6b7280; font-family: monospace; margin-bottom: 12px; }
 .rem h4 { font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 6px; }
 .rem { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 10px 12px; }
 .rem li { font-size: 13px; color: #78350f; margin-left: 14px; margin-bottom: 2px; }
-
 """
 
 def badge(sev):
@@ -70,14 +71,19 @@ def badge(sev):
     return f'<span class="badge" style="color:{color};border:1px solid {color};background:{color}18">{sev}</span>'
 
 def table_row(r):
-    sev    = r["severity"]
-    status = '<span class="found">● 탐지됨</span>' if r["found"] else '<span class="safe">○ 안전</span>'
+    sev      = r["severity"]
+    status   = '<span class="found">● 탐지됨</span>' if r["found"] else '<span class="safe">○ 안전</span>'
+    poc      = r.get("poc_success", False)
+    poc_cell = '<span style="color:#16a34a;font-weight:600">● 성공</span>' if poc else '<span style="color:#9ca3af">—</span>'
+    os_info  = r.get("os_info", "") or "—"
     return (
         f"<tr>"
         f"<td><strong>{r['cve']}</strong></td>"
         f"<td>{r['name']}</td>"
         f"<td>{badge(sev)}</td>"
         f"<td>{status}</td>"
+        f"<td>{poc_cell}</td>"
+        f"<td style='font-size:12px;color:#555'>{os_info}</td>"
         f"<td style='font-family:monospace;font-size:12px;color:#2563eb'>{r['url']}</td>"
         f"</tr>"
     )
@@ -89,7 +95,19 @@ def detail_card(r):
     color    = SEV_COLOR.get(sev, "#888")
     rem_html = "".join(f"<li>{i}</li>" for i in r.get("remediation", []))
     extra    = r.get("extra", "")
-    detect   = f'<div class="detect">{extra}</div>' if extra else ""
+    poc_ok   = r.get("poc_success", False)
+    poc_msg  = r.get("poc_msg", "")
+
+    os_info     = r.get("os_info", "")
+    detect_html = f'<div class="detect">{extra}</div>' if extra else ""
+
+    if poc_ok and poc_msg:
+        poc_html = f'<div class="poc-ok">PoC 성공: {poc_msg}</div>'
+    elif poc_msg:
+        poc_html = f'<div class="poc-fail">PoC: {poc_msg}</div>'
+    else:
+        poc_html = ""
+
     return f"""
 <div class="card">
   <div class="card-head" style="border-left:3px solid {color}">
@@ -101,8 +119,10 @@ def detail_card(r):
   <div class="card-body">
     <div class="kv">
       <span class="k">대상</span><span style="font-family:monospace;font-size:12px">{r['url']}</span>
+      <span class="k">OS</span><span style="font-size:12px">{os_info or '—'}</span>
     </div>
-    {detect}
+    {detect_html}
+    {poc_html}
     <div class="rem">
       <h4>권장 조치</h4>
       <ul>{rem_html}</ul>
@@ -114,6 +134,7 @@ def build(data):
     results  = data["results"]
     total    = len(results)
     detected = sum(1 for r in results if r["found"])
+    poc_cnt  = sum(1 for r in results if r.get("poc_success"))
     dt       = datetime.fromisoformat(data["scan_time"]).strftime("%Y-%m-%d  %H:%M")
 
     sev_counts = {}
@@ -130,6 +151,8 @@ def build(data):
     rows    = "\n".join(table_row(r) for r in results)
     details = "\n".join(detail_card(r) for r in results)
 
+    poc_stat = f'<div class="stat"><div class="n" style="color:#16a34a">{poc_cnt}</div><div class="l">PoC 성공</div></div>' if poc_cnt else ""
+
     return f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -144,6 +167,7 @@ def build(data):
     <div class="sub">ASM 파이프라인 기반 취약점 탐지 (Nuclei)</div>
     <div class="meta">
       <span>진단 일시: {dt}</span>
+      &nbsp;&nbsp;
       <span>도구: Nuclei v3.3.7</span>
     </div>
   </div>
@@ -153,11 +177,12 @@ def build(data):
     <div class="stat"><div class="n" style="color:#dc2626">{detected}</div><div class="l">탐지된 취약점</div></div>
     <div class="stat"><div class="n" style="color:#16a34a">{total-detected}</div><div class="l">안전</div></div>
     {extra_stats}
+    {poc_stat}
   </div>
 
   <h2>스캔 결과 요약</h2>
   <table>
-    <thead><tr><th>CVE ID</th><th>취약점명</th><th>심각도</th><th>탐지결과</th><th>대상 주소</th></tr></thead>
+    <thead><tr><th>CVE ID</th><th>취약점명</th><th>심각도</th><th>탐지결과</th><th>PoC</th><th>OS</th><th>대상 주소</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
 

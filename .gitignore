@@ -1,8 +1,8 @@
 # 실행 결과물
 scan_results/
 
-# Nuclei 바이너리
-nuclei_bin/nuclei.exe
+# Nuclei 바이너리 및 문서
+nuclei_bin/
 
 # 수업 자료
 References/

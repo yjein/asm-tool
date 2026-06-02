@@ -11,7 +11,7 @@ Docker 테스트베드 기반 CVE 취약점 자동화 탐지 도구
 ## 설치
 
 ```bash
-pip install rich
+pip install rich impacket paramiko
 ```
 
 ## 실행
