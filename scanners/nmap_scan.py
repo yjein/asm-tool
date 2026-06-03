@@ -1,10 +1,27 @@
 import re
 import subprocess
+import sys
+from pathlib import Path
 
 from rich.table import Table
 from rich import box
 
 from .utils import console, info, warn, step
+
+_NMAP_CANDIDATES = (
+    ["nmap"],
+    ["C:\\Program Files (x86)\\Nmap\\nmap.exe"],
+    ["C:\\Program Files\\Nmap\\nmap.exe"],
+)
+
+def _nmap_cmd():
+    for cmd in _NMAP_CANDIDATES:
+        try:
+            subprocess.run(cmd + ["--version"], capture_output=True, timeout=5)
+            return cmd
+        except Exception:
+            continue
+    return None
 
 NMAP_TARGETS = [
     {"name": "OpenSSH (CVE-2018-15473)",   "port": "2222"},
@@ -21,18 +38,13 @@ NMAP_CVE_INFO = {
 SEV_COLOR = {"CRITICAL": "bright_red", "HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}
 
 
-def _nmap_available():
-    try:
-        subprocess.run(["nmap", "--version"], capture_output=True, timeout=5)
-        return True
-    except Exception:
-        return False
-
-
 def _run_nmap(host, port):
+    cmd = _nmap_cmd()
+    if not cmd:
+        return ""
     try:
         result = subprocess.run(
-            ["nmap", "-sV", "-p", port, host],
+            cmd + ["-sV", "-p", port, host],
             capture_output=True, text=True, timeout=30
         )
         return result.stdout
@@ -48,7 +60,7 @@ def _parse_nmap(output, port):
 
 
 def run_nmap_scan(host):
-    if not _nmap_available():
+    if not _nmap_cmd():
         warn("nmap 미설치 — 서비스 버전 탐지 건너뜀")
         console.print()
         return None
