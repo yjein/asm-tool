@@ -1,18 +1,59 @@
 import json
 import re
 import socket
+import subprocess
+import sys
 import time
 import urllib.request
+from pathlib import Path
 
 from .utils import console, info, ok, warn, alert, step, check_port, os_from_ssh_banner
 from .poc import poc_log4shell, poc_sambacry, poc_ssh_enum
+
+_ROOT      = Path(__file__).parent.parent
+_NUCLEI    = _ROOT / "nuclei_bin" / ("nuclei.exe" if sys.platform == "win32" else "nuclei")
+_TEMPLATES = _ROOT / "custom_templates"
+
+
+def _run_nuclei(cve_id, target, timeout=30):
+    if not _NUCLEI.exists():
+        return None, "nuclei 바이너리 없음"
+    template = _TEMPLATES / f"{cve_id}.yaml"
+    if not template.exists():
+        return None, "템플릿 없음"
+    try:
+        result = subprocess.run(
+            [
+                str(_NUCLEI), "-t", str(template), "-u", target,
+                "-no-interactsh", "-jsonl", "-silent", "-duc",
+                "-timeout", "10",
+            ],
+            capture_output=True,
+            timeout=timeout,
+        )
+        out  = result.stdout.decode("utf-8", errors="ignore").strip()
+        err  = result.stderr.decode("utf-8", errors="ignore").strip()
+        step(f"Nuclei 종료코드: {result.returncode}  stdout: {len(out)}바이트  stderr: {len(err)}바이트")
+        for line in out.splitlines():
+            try:
+                data = json.loads(line)
+                if data.get("template-id", "").upper() == cve_id.upper():
+                    matched = data.get("matched-at", target)
+                    return True, f"{matched}"
+            except Exception:
+                continue
+        return False, ""
+    except subprocess.TimeoutExpired:
+        return None, "타임아웃 (30초 초과)"
+    except Exception as e:
+        return None, str(e)[:60]
 
 
 def scan_log4shell(target):
     host = target.replace("http://", "").replace("https://", "").split(":")[0]
     port = int(target.split(":")[-1]) if target.count(":") >= 2 else 8080
 
-    info(f"CVE-2021-44228 스캔 시작대상: {target}")
+    info(f"CVE-2021-44228 스캔 시작  —  대상: {target}")
 
     step("포트 연결 확인 중...")
     time.sleep(0.3)
@@ -42,7 +83,6 @@ def scan_log4shell(target):
     except Exception:
         warn("JSON 파싱 실패")
         return False, "", False, "", ""
-
     ok(f"버전 확인: solr-spec-version = {version}")
 
     step("OS 정보 추정 중...")
@@ -58,12 +98,26 @@ def scan_log4shell(target):
     ok(f"OS 추정: {os_info}")
     time.sleep(0.2)
 
+    # Nuclei 탐지
+    step("Nuclei 템플릿 실행 중...")
+    nuclei_found, nuclei_detail = _run_nuclei("CVE-2021-44228", target)
+    if nuclei_found is True:
+        ok(f"Nuclei 탐지 성공: {nuclei_detail}")
+        alert(f"CVE-2021-44228 탐지됨  (Solr {version}  /  취약한 Log4j 버전 사용)")
+        console.print()
+        poc_ok, poc_msg = poc_log4shell(target)
+        return True, f"Solr {version} — 취약한 Log4j 버전 내장 (JNDI Lookup 가능)", poc_ok, poc_msg, os_info
+    elif nuclei_found is None:
+        warn(f"Nuclei 실행 실패 ({nuclei_detail}) — Python 탐지로 전환")
+    else:
+        step("Nuclei 미탐지 — Python 버전 체크로 확인 중...")
+
+    # Python fallback: 버전 범위 체크
     step("Log4j 취약 버전 대조 중...")
     time.sleep(0.3)
     try:
         parts = version.split('.')
         v_maj, v_min, v_pat = int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0
-        # Solr 8.11.2부터 Log4j 2.17.0 적용 (완전 패치)
         vuln_solr = v_maj < 8 or (v_maj == 8 and v_min < 11) or (v_maj == 8 and v_min == 11 and v_pat < 2)
     except Exception:
         vuln_solr = False
@@ -82,7 +136,7 @@ def scan_sambacry(target):
     host = target.split(":")[0]
     port = int(target.split(":")[1]) if ":" in target else 445
 
-    info(f"CVE-2017-7494 스캔 시작대상: {target}")
+    info(f"CVE-2017-7494 스캔 시작  —  대상: {target}")
 
     step("SMB 포트 연결 확인 중...")
     time.sleep(0.3)
@@ -98,7 +152,6 @@ def scan_sambacry(target):
         from impacket.smbconnection import SMBConnection
         smb = SMBConnection('*SMBSERVER', host, sess_port=port, timeout=8)
         smb.login('', '')
-
         try:
             os_raw = smb.getServerOS()
             if os_raw:
@@ -106,7 +159,6 @@ def scan_sambacry(target):
         except Exception:
             pass
         ok(f"OS 추정: {os_info}")
-
         shares = smb.listShares()
         names = []
         for s in shares:
@@ -116,11 +168,9 @@ def scan_sambacry(target):
             except Exception:
                 name = str(raw)
             names.append(name)
-
         user_shares = [n for n in names if n.upper() not in ('IPC$', 'PRINT$')]
         ok(f"게스트 접근 가능 공유 감지: {', '.join(user_shares) if user_shares else '없음'}")
         smb.logoff()
-
     except ImportError:
         warn("impacket 미설치, 포트 기반 탐지로 대체")
     except Exception as e:
@@ -130,9 +180,23 @@ def scan_sambacry(target):
     time.sleep(0.4)
     ok("NT 파이프 지원 활성화 확인")
 
+    # Nuclei 탐지
+    step("Nuclei 템플릿 실행 중...")
+    nuclei_found, nuclei_detail = _run_nuclei("CVE-2017-7494", f"{host}:{port}")
+    if nuclei_found is True:
+        ok(f"Nuclei 탐지 성공: {nuclei_detail}")
+        alert(f"CVE-2017-7494 탐지됨  (Samba  /  RCE 가능)")
+        console.print()
+        poc_ok, poc_msg = poc_sambacry(host, port)
+        return True, f"Nuclei 탐지 + 게스트 공유 익명 쓰기 가능 (원격 코드 실행)", poc_ok, poc_msg, os_info
+    elif nuclei_found is None:
+        warn(f"Nuclei 실행 실패 ({nuclei_detail}) — Python 탐지로 전환")
+    else:
+        step("Nuclei 미탐지 — Python 버전 체크로 확인 중...")
+
+    # Python fallback: Samba 버전 범위 체크
     step("Samba 버전 지문 대조 중...")
     time.sleep(0.3)
-
     m = re.search(r'[Ss]amba\s+(\d+)\.(\d+)\.(\d+)', os_info)
     if m:
         major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -155,17 +219,16 @@ def scan_sambacry(target):
         return False, "", False, "", os_info
 
     alert(f"CVE-2017-7494 탐지됨  (Samba {samba_ver}  /  RCE 가능)")
-
     console.print()
     poc_ok, poc_msg = poc_sambacry(host, port)
-    return True, f"Samba {samba_ver}  게스트 공유  NT 파이프 활성화  원격 코드 실행 가능", poc_ok, poc_msg, os_info
+    return True, f"Samba {samba_ver} — 게스트 공유 + NT 파이프 활성화 (원격 코드 실행)", poc_ok, poc_msg, os_info
 
 
 def scan_ssh_enum(target):
     host = target.split(":")[0]
     port = int(target.split(":")[1]) if ":" in target else 22
 
-    info(f"CVE-2018-15473 스캔 시작대상: {target}")
+    info(f"CVE-2018-15473 스캔 시작  —  대상: {target}")
 
     step("SSH 포트 연결 중...")
     time.sleep(0.3)
@@ -189,6 +252,21 @@ def scan_ssh_enum(target):
     os_info = os_from_ssh_banner(banner)
     ok(f"OS 추정: {os_info}")
 
+    # Nuclei 탐지
+    step("Nuclei 템플릿 실행 중...")
+    nuclei_found, nuclei_detail = _run_nuclei("CVE-2018-15473", f"{host}:{port}")
+    if nuclei_found is True:
+        ok(f"Nuclei 탐지 성공: {nuclei_detail}")
+        alert(f"CVE-2018-15473 탐지됨  ({banner}  /  사용자 열거 가능)")
+        console.print()
+        poc_ok, poc_msg = poc_ssh_enum(host, port)
+        return True, f"Nuclei 탐지 + 공개키 인증 응답 차이로 사용자 열거 가능", poc_ok, poc_msg, os_info
+    elif nuclei_found is None:
+        warn(f"Nuclei 실행 실패 ({nuclei_detail}) — Python 탐지로 전환")
+    else:
+        step("Nuclei 미탐지 — Python 버전 체크로 확인 중...")
+
+    # Python fallback: 버전 정규식 체크
     step("취약 버전 여부 확인 중...")
     time.sleep(0.3)
     m = re.search(r'OpenSSH_(\d+)\.(\d+)', banner)
@@ -202,10 +280,9 @@ def scan_ssh_enum(target):
 
     if vulnerable:
         alert(f"CVE-2018-15473 탐지됨  (OpenSSH {ssh_ver}  /  사용자 열거 가능)")
-
         console.print()
         poc_ok, poc_msg = poc_ssh_enum(host, port)
-        return True, f"{banner}  공개키 인증 응답 차이로 사용자 열거 가능", poc_ok, poc_msg, os_info
+        return True, f"{banner} — 공개키 인증 응답 차이로 사용자 열거 가능", poc_ok, poc_msg, os_info
 
     ok(f"취약 버전 아님 (OpenSSH {ssh_ver})")
     return False, "", False, "", os_info
