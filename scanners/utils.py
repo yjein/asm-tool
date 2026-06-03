@@ -3,11 +3,35 @@ from rich.console import Console
 
 console = Console(highlight=False)
 
-def info(msg):  console.print(f"[cyan][*][/cyan] {msg}")
-def ok(msg):    console.print(f"[green][+][/green] {msg}")
-def warn(msg):  console.print(f"[yellow][-][/yellow] {msg}")
-def alert(msg): console.print(f"[bold red][!][/bold red] {msg}")
-def step(msg):  console.print(f"    [dim]->[/dim] {msg}")
+_log_callback = None
+
+def set_log_callback(cb):
+    global _log_callback
+    _log_callback = cb
+
+def _emit(level, msg):
+    if _log_callback:
+        _log_callback(level, msg)
+
+def info(msg):
+    _emit("info", msg)
+    if not _log_callback: console.print(f"[cyan][*][/cyan] {msg}")
+
+def ok(msg):
+    _emit("ok", msg)
+    if not _log_callback: console.print(f"[green][+][/green] {msg}")
+
+def warn(msg):
+    _emit("warn", msg)
+    if not _log_callback: console.print(f"[yellow][-][/yellow] {msg}")
+
+def alert(msg):
+    _emit("alert", msg)
+    if not _log_callback: console.print(f"[bold red][!][/bold red] {msg}")
+
+def step(msg):
+    _emit("step", msg)
+    if not _log_callback: console.print(f"    [dim]->[/dim] {msg}")
 
 
 def check_port(host, port, timeout=3):
