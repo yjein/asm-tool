@@ -25,4 +25,10 @@ REMEDIATION = {
     ],
 }
 
-SEV_COLOR = {"CRITICAL": "bright_red", "HIGH": "red", "MEDIUM": "yellow"}
+SEV_COLOR = {"CRITICAL": "bright_red", "HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}
+
+CVE_DESCRIPTIONS = {
+    "CVE-2021-44228": "Apache Solr에 내장된 Log4j 2.14.1의 JNDI Lookup 기능을 통해 원격 코드 실행이 가능한 취약점",
+    "CVE-2017-7494":  "Samba 3.5.0~4.6.3에서 쓰기 가능한 공유에 악성 라이브러리를 업로드하여 원격 코드 실행이 가능한 취약점",
+    "CVE-2018-15473": "OpenSSH 7.7 이하에서 공개키 인증 응답 차이를 이용해 유효한 사용자 계정을 열거할 수 있는 취약점",
+}
