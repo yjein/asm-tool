@@ -58,16 +58,23 @@ def scan_log4shell(target):
     ok(f"OS 추정: {os_info}")
     time.sleep(0.2)
 
-    if version.startswith("8.11"):
-        step("Log4j 버전 대조 중...")
-        time.sleep(0.4)
-        alert(f"CVE-2021-44228 탐지됨  (Solr {version}  /  Log4j 2.14.1 내장)")
+    step("Log4j 취약 버전 대조 중...")
+    time.sleep(0.3)
+    try:
+        parts = version.split('.')
+        v_maj, v_min, v_pat = int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0
+        # Solr 8.11.2부터 Log4j 2.17.0 적용 (완전 패치)
+        vuln_solr = v_maj < 8 or (v_maj == 8 and v_min < 11) or (v_maj == 8 and v_min == 11 and v_pat < 2)
+    except Exception:
+        vuln_solr = False
 
+    if vuln_solr:
+        alert(f"CVE-2021-44228 탐지됨  (Solr {version}  /  취약한 Log4j 버전 사용)")
         console.print()
         poc_ok, poc_msg = poc_log4shell(target)
-        return True, f"Solr {version}  Log4j 2.14.1 내장  JNDI Lookup 취약", poc_ok, poc_msg, os_info
+        return True, f"Solr {version} — 취약한 Log4j 버전 내장 (JNDI Lookup 가능)", poc_ok, poc_msg, os_info
 
-    ok("취약 버전 아님")
+    ok(f"취약 버전 아님 (Solr {version})")
     return False, "", False, "", os_info
 
 
