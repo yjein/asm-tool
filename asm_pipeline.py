@@ -57,9 +57,11 @@ def step3_nuclei():
         "nuclei",
         "-list", "ports.txt",
         "-t", "custom_templates/",
-        "-json",
+        "-jsonl",
         "-o", "nuclei_result.json",
         "-silent",
+        "-duc",
+        "-system-resolvers",
     ]
     run_step(cmd, "3단계: Nuclei (취약점 스캔)")
     check_output_file("nuclei_result.json", "3단계 Nuclei")
