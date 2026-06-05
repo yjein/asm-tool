@@ -21,13 +21,18 @@ def _run_nuclei(cve_id, target, timeout=30):
     template = _TEMPLATES / f"{cve_id}.yaml"
     if not template.exists():
         return None, "템플릿 없음"
+    # nuclei 자체 DNS 리졸버가 localhost를 못 찾는 문제 회피
+    target = target.replace("localhost", "127.0.0.1")
+    # HTTP 템플릿은 httpx 허용, TCP 템플릿은 httpx 스킵
+    is_http = target.startswith("http://") or target.startswith("https://")
+    extra_flags = [] if is_http else ["-no-httpx"]
     try:
         result = subprocess.run(
             [
                 str(_NUCLEI), "-t", str(template), "-u", target,
                 "-no-interactsh", "-jsonl", "-silent", "-duc",
                 "-timeout", "10",
-            ],
+            ] + extra_flags,
             capture_output=True,
             timeout=timeout,
         )
