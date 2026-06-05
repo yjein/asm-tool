@@ -173,7 +173,7 @@ class ScanWorker(QThread):
         self._nuclei_run([
             str(NUCLEI_BIN), "-u", "http://127.0.0.1:8080",
             "-t", str(TEMPLATES / "CVE-2021-44228.yaml"),
-            "-jsonl", "-o", str(out_http), "-silent", "-timeout", "10", "-duc",
+            "-jsonl", "-o", str(out_http), "-silent", "-timeout", "30", "-duc",
         ], "HTTP")
 
         self._nuclei_run([
@@ -182,7 +182,7 @@ class ScanWorker(QThread):
             "-t", str(TEMPLATES / "CVE-2017-7494.yaml"),
             "-t", str(TEMPLATES / "CVE-2018-15473.yaml"),
             "-no-httpx",
-            "-jsonl", "-o", str(out_tcp), "-silent", "-timeout", "10", "-duc",
+            "-jsonl", "-o", str(out_tcp), "-silent", "-timeout", "30", "-duc",
         ], "TCP")
 
         # 두 파일 합산
