@@ -37,25 +37,30 @@ class MainWindow(QMainWindow):
         self.scan_screen.cancel_requested.connect(self._cancel_scan)
         self.report_screen.new_scan_requested.connect(self._go_start)
 
-    def _start_scan(self, host, selected_cves, do_port, do_nmap):
+    def _start_scan(self, host, selected_cves, do_port, do_nmap, do_subfinder=False):
         self.report_screen.reset()
 
-        phases = []
-        if do_port: phases.append('port_scan')
-        if do_nmap: phases.append('nmap')
-        phases += [{'1':'CVE-2021-44228','2':'CVE-2017-7494','3':'CVE-2018-15473'}[k]
-                   for k in selected_cves]
+        cve_map = {'1': 'CVE-2021-44228', '2': 'CVE-2017-7494', '3': 'CVE-2018-15473'}
+        phases  = []
+        if do_subfinder: phases.append('subfinder')
+        if do_port:      phases.append('naabu')
+        if do_nmap:      phases.append('nmap')
+        phases += [cve_map[k] for k in selected_cves]
+        phases.append('nuclei')
 
         self.scan_screen.setup(host, phases)
         self.stack.setCurrentIndex(SCREEN_SCAN)
 
-        self._worker = ScanWorker(host, selected_cves, do_port, do_nmap)
+        self._worker = ScanWorker(host, selected_cves, do_port, do_nmap,
+                                  do_nuclei=True, do_subfinder=do_subfinder)
         self._worker.log_signal.connect(self.scan_screen.append_log)
         self._worker.phase_signal.connect(self.scan_screen.set_phase)
         self._worker.progress_signal.connect(self.scan_screen.set_progress)
         self._worker.cve_result_signal.connect(self.report_screen.add_cve_result)
         self._worker.port_result_signal.connect(self.report_screen.set_port_result)
         self._worker.nmap_result_signal.connect(self.report_screen.set_nmap_result)
+        self._worker.nuclei_result_signal.connect(self.report_screen.set_nuclei_result)
+        self._worker.subfinder_result_signal.connect(self.report_screen.set_subfinder_result)
         self._worker.finished_signal.connect(lambda: self._on_finished(host))
         self._worker.error_signal.connect(
             lambda e: self.scan_screen.append_log('alert', f'오류: {e[:120]}')
