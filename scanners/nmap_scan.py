@@ -38,6 +38,39 @@ NMAP_CVE_INFO = {
 SEV_COLOR = {"CRITICAL": "bright_red", "HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}
 
 
+def _check_version(cve_id: str, version: str) -> bool:
+    if not version or version in ("Unknown", ""):
+        return False
+    try:
+        if cve_id == "CVE-2017-7494":
+            m = re.search(r'(\d+)\.(\d+)\.(\d+)', version)
+            if not m:
+                return False
+            major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            return (
+                (major == 3 and minor >= 5) or
+                (major == 4 and (minor < 4 or
+                    (minor == 4 and patch < 14) or
+                    (minor == 5 and patch < 10) or
+                    (minor == 6 and patch < 4)))
+            )
+        if cve_id == "CVE-2018-15473":
+            m = re.search(r'(\d+)\.(\d+)', version)
+            if not m:
+                return False
+            major, minor = int(m.group(1)), int(m.group(2))
+            return major < 7 or (major == 7 and minor <= 7)
+        if cve_id == "CVE-2021-44228":
+            m = re.search(r'(\d+)\.(\d+)', version)
+            if not m:
+                return False
+            major, minor = int(m.group(1)), int(m.group(2))
+            return major == 8 and minor == 11
+    except Exception:
+        pass
+    return False
+
+
 def _run_nmap(host, port):
     cmd = _nmap_cmd()
     if not cmd:
@@ -81,13 +114,16 @@ def run_nmap_scan(host):
         output           = _run_nmap(host, port)
         state, service, version = _parse_nmap(output, port)
         cve_data         = NMAP_CVE_INFO.get(port, {})
+        cve_id           = cve_data.get("cve", "")
         sev              = cve_data.get("severity", "")
         c                = SEV_COLOR.get(sev, "white")
+        version_vuln     = _check_version(cve_id, version) if state == "open" else False
         if state == "open":
             t.add_row(port, service, version, cve_data.get("cve", "—"), f"[{c}]{sev}[/{c}]")
         results.append({
             "port": port, "service": service, "version": version,
-            "state": state, "cve": cve_data.get("cve", ""), "severity": sev,
+            "state": state, "cve": cve_id, "severity": sev,
+            "version_vuln": version_vuln,
         })
 
     console.print(t)
